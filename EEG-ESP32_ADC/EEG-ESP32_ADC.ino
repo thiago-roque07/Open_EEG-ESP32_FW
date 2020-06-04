@@ -14,6 +14,8 @@ const int data_length = 256;
 unsigned long count_new = 0;
 unsigned long count_old = 0;
 unsigned long time_diff;
+int time_diff_acc = 0;
+int i = 0;
 
 volatile bool continuousConversionReady = false;
 volatile bool buff_full = false;
@@ -24,17 +26,14 @@ int array_index = 0;
 int buff = 0;
 int *ptr_data = value_array;
 int ADC_read;
-//int result0;
-//int result1;
-//int result2;
 
 int channel = 0;
 
-struct ADC_data {   // Declare PERSON struct type
-    int a;   //
-    int b;   //
-    int c;   // 
-} result;   // Define object of type PERSON
+struct ADC_data {
+    int a;   // correspond to ADS1115 channel 0
+    int b;   // correspond to ADS1115 channel 1
+    int c;   // correspond to ADS1115 channel 2
+} result;
 
 
 
@@ -89,8 +88,8 @@ void Task1code( void * pvParameters ){
   for(;;){
     
       if (continuousConversionReady) {
-        //SerialBT.println(*((int*)pvParameters));
-        Serial.println(ptr_result->c);
+        SerialBT.println(ptr_result->c);
+        //Serial.println(ptr_result->c);
       }
   } 
   vTaskDelete( NULL );
@@ -98,14 +97,15 @@ void Task1code( void * pvParameters ){
 
 void loop() {
   if (continuousConversionReady) {    
-
+    
+    continuousConversionReady = false;
+    
     ADC_read = ((int) ads.getLastConversionResults());
     //value_array[array_index] = ((int) ads.getLastConversionResults());
     //result = value_array[array_index];
     //array_index = (array_index < data_length) ? array_index+1 : 0;
-    
-    continuousConversionReady = false;
- 
+
+    // Demux ADC read and switch next read to the subsequent channel 
     switch (channel) {
     case (0):
       result.c = ADC_read;
@@ -124,6 +124,17 @@ void loop() {
     
     //Serial.println (result);
     //Serial.println(time_diff);
+
+    // checking effective sampling rate
+    if( i < 1000) {
+      i++;
+      time_diff_acc += time_diff;
+    } 
+    else {
+      i = 0;
+      Serial.println(time_diff_acc);
+      time_diff_acc = 0;
+    }
 
   }
 }
