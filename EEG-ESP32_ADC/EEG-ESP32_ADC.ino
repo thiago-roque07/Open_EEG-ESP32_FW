@@ -20,24 +20,31 @@ volatile bool buff_full = false;
 bool onoff = LOW;
 
 int value_array[data_length];
-int result;
 int array_index = 0;
 int buff = 0;
 int *ptr_data = value_array;
+int ADC_read;
+//int result0;
+//int result1;
+//int result2;
+
 int channel = 0;
-// LED pins
-const int led1 = 2;
-const int led2 = 4;
+
+struct ADC_data {   // Declare PERSON struct type
+    int a;   //
+    int b;   //
+    int c;   // 
+} result;   // Define object of type PERSON
+
+
 
 TaskHandle_t Task1;
-TaskHandle_t Task2;
+
 
 BluetoothSerial SerialBT;
 
 void setup() {
   pinMode(alertPin,INPUT);
-  pinMode(led1, OUTPUT);
-  pinMode(led2, OUTPUT);
   
   Serial.begin(115200);
   Serial.println("Hello!");
@@ -59,41 +66,31 @@ void setup() {
   ads.setGain(GAIN_ONE);           // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
   ads.begin();
   ads.setSPS(ADS1115_DR_860SPS);     
-  ads.startContinuous_SingleEnded(1); 
+  ads.startContinuous_SingleEnded(channel); 
   
   attachInterrupt(digitalPinToInterrupt(alertPin), continuousAlert, FALLING);
 }
 
 void continuousAlert() {
   continuousConversionReady = true;
-  //Serial.println("oi");
   count_new = micros();
   time_diff = count_new-count_old;
   count_old = count_new;
 }
 
-//Task1code: blinks an LED every 1000 ms
+
 void Task1code( void * pvParameters ){
+  ADC_data *ptr_result = ((ADC_data*)pvParameters);
+  
   Serial.print("Task1 running on core ");
   Serial.println(xPortGetCoreID());
   Serial.println(data_length);
 
   for(;;){
     
-//    for(int consume_index = 0; consume_index < data_length; consume_index++)
-//    {
-//      //Serial.println(*((int*)pvParameters)); 
-//      //Serial.println ("1111111111111111111111111111111111111111111111111111111111111111111111111");
-//      //pvParameters++;
-//      //SerialBT.println (data_array[consume_index]);
-//      SerialBT.println(*((int*)pvParameters)); 
-//      //SerialBT.println ("1111111111111111111111111111111111111111111111111111111111111111111111111");
-//    }
-//    vTaskDelay(1070); //
-
       if (continuousConversionReady) {
-        SerialBT.println(*((int*)pvParameters));
-        //Serial.println(*((int*)pvParameters));
+        //SerialBT.println(*((int*)pvParameters));
+        Serial.println(ptr_result->c);
       }
   } 
   vTaskDelete( NULL );
@@ -101,27 +98,31 @@ void Task1code( void * pvParameters ){
 
 void loop() {
   if (continuousConversionReady) {    
-    
-    value_array[array_index] = ((int) ads.getLastConversionResults());
-    result = value_array[array_index];
-    array_index = (array_index < data_length) ? array_index+1 : 0;
+
+    ADC_read = ((int) ads.getLastConversionResults());
+    //value_array[array_index] = ((int) ads.getLastConversionResults());
+    //result = value_array[array_index];
+    //array_index = (array_index < data_length) ? array_index+1 : 0;
     
     continuousConversionReady = false;
  
     switch (channel) {
     case (0):
+      result.c = ADC_read;
       channel = 1;
       break;
     case (1):
+      result.a = ADC_read;
       channel = 2;
       break;
     case (2):
+      result.b = ADC_read;
       channel = 0;
       break;
     }
     ads.changeChannelContinuous_SingleEnded(channel);
     
-    Serial.println (result);
+    //Serial.println (result);
     //Serial.println(time_diff);
 
   }
