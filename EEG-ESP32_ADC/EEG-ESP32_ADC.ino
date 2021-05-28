@@ -40,15 +40,15 @@ struct ADC_data {
 
 
 //TaskHandle_t Task1;
-//BluetoothSerial SerialBT;
+BluetoothSerial SerialBT;
 
 void setup() {
   
   Serial.begin(115200);
   Serial.println("Hello!");
   
-//  SerialBT.begin("ESP32_BT"); //Bluetooth device name
-//  Serial.println("The device started, now you can pair it with bluetooth!");
+  SerialBT.begin("ESP32_BT"); //Bluetooth device name
+  Serial.println("The device started, now you can pair it with bluetooth!");
 
 //  //create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
 //  xTaskCreatePinnedToCore(
@@ -68,14 +68,6 @@ void setup() {
   Serial.println("Setup ready!");
 }
 
-//void continuousAlert() {
-//  continuousConversionReady = true;
-//  count_new = micros();
-//  time_diff = count_new-count_old;
-//  count_old = count_new;
-//
-//  Serial.println("Alert!");
-//}
 
 
 //void Task1code( void * pvParameters ){
@@ -118,6 +110,9 @@ void loop() {
 
     // Envia a amostra filtrada pela serial //
     Serial.println(sample.b_filt_atual);
+
+    // Envia a amostra filtrada pelo Bluetooth //
+//    SerialBT.println(sample.b_filt_atual);
   }
     
 }
