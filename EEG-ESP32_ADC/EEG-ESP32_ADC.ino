@@ -1,5 +1,5 @@
 #include <Wire.h>
-#include "Adafruit_ADS1015_mod.h"
+#include <Adafruit_ADS1X15.h>
 #include "BluetoothSerial.h"
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
@@ -8,133 +8,116 @@
 
 Adafruit_ADS1115 ads;     // Use this for the 16-bit version 
 
-const int alertPin = 5;
-const int data_length = 256;
 
-unsigned long count_new = 0;
-unsigned long count_old = 0;
-unsigned long time_diff;
-int time_diff_acc = 0;
-int i = 0;
+const int data_length = 512;
 
-volatile bool continuousConversionReady = false;
-volatile bool buff_full = false;
-bool onoff = LOW;
+unsigned int period = 4000; //4000 us = 4ms = 1/250 SPS
+unsigned long previousMicros = 0;
 
-int value_array[data_length];
-int array_index = 0;
-int buff = 0;
-int *ptr_data = value_array;
-int ADC_read;
-
-int channel = 0;
+const double hp_coeff = 0.987589583; // Coeficiente do filtro hp, com frequência de corte em 0.5Hz e Fs = 250Hz 
 
 struct ADC_data {
-    int a;   // correspond to ADS1115 channel 0
-    int b;   // correspond to ADS1115 channel 1
-    int c;   // correspond to ADS1115 channel 2
-} result;
+  
+    double a_atual = 0;   // amostra do ADS1115 channel 0
+    double b_atual = 0;   // amostra do ADS1115 channel 1
+    double c_atual = 0;   // amostra do ADS1115 channel 2
+
+    double a_prev = 0;   // amostra bufferizada para o filtro, relativa ao canal 0
+    double b_prev = 0;   // amostra bufferizada para o filtro, relativa ao canal 1
+    double c_prev = 0;   // amostra bufferizada para o filtro, relativa ao canal 2
+
+    double a_filt_atual = 0;   // Amostra filtrada, correspondente ao canal 0
+    double b_filt_atual = 0;   // Amostra filtrada, correspondente ao canal 1
+    double c_filt_atual = 0;   // Amostra filtrada, correspondente ao canal 2
+    
+    double a_filt_prev = 0;   // buffer da amostra filtrada, relativa ao canal 0
+    double b_filt_prev = 0;   // buffer da amostra filtrada, relativa ao canal 1
+    double c_filt_prev = 0;   // buffer da amostra filtrada, relativa ao canal 2
+    
+    bool new_read = 0;        // Variável para indicar nova leitura
+} sample;
 
 
 
-TaskHandle_t Task1;
-
-
-BluetoothSerial SerialBT;
+//TaskHandle_t Task1;
+//BluetoothSerial SerialBT;
 
 void setup() {
-  pinMode(alertPin,INPUT);
   
   Serial.begin(115200);
   Serial.println("Hello!");
   
-  SerialBT.begin("ESP32_BT"); //Bluetooth device name
-  Serial.println("The device started, now you can pair it with bluetooth!");
+//  SerialBT.begin("ESP32_BT"); //Bluetooth device name
+//  Serial.println("The device started, now you can pair it with bluetooth!");
 
-  //create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
-  xTaskCreatePinnedToCore(
-                    Task1code,   /* Task function. */
-                    "Task1",     /* name of task. */
-                    10000,       /* Stack size of task */
-                    (void*)&result,        /* parameter of the task */
-                    0,           /* priority of the task */
-                    &Task1,      /* Task handle to keep track of created task */
-                    0);          /* pin task to core 0 */                  
+//  //create a task that will be executed in the Task1code() function, with priority 1 and executed on core 0
+//  xTaskCreatePinnedToCore(
+//                    Task1code,   /* Task function. */
+//                    "Task1",     /* name of task. */
+//                    10000,       /* Stack size of task */
+//                    (void*)&sample,        /* parameter of the task */
+//                    0,           /* priority of the task */
+//                    &Task1,      /* Task handle to keep track of created task */
+//                    0);          /* pin task to core 0 */                  
   delay(500); 
 
-  ads.setGain(GAIN_ONE);           // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
+  ads.setGain(GAIN_TWO);           // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
   ads.begin();
-  ads.setSPS(ADS1115_DR_860SPS);     
-  ads.startContinuous_SingleEnded(channel); 
+  ads.setDataRate(RATE_ADS1115_250SPS);  
   
-  attachInterrupt(digitalPinToInterrupt(alertPin), continuousAlert, FALLING);
+  Serial.println("Setup ready!");
 }
 
-void continuousAlert() {
-  continuousConversionReady = true;
-  count_new = micros();
-  time_diff = count_new-count_old;
-  count_old = count_new;
-}
+//void continuousAlert() {
+//  continuousConversionReady = true;
+//  count_new = micros();
+//  time_diff = count_new-count_old;
+//  count_old = count_new;
+//
+//  Serial.println("Alert!");
+//}
 
 
-void Task1code( void * pvParameters ){
-  ADC_data *ptr_result = ((ADC_data*)pvParameters);
-  
-  Serial.print("Task1 running on core ");
-  Serial.println(xPortGetCoreID());
-  Serial.println(data_length);
-
-  for(;;){
-    
-      if (continuousConversionReady) {
-        SerialBT.println(ptr_result->c);
-        //Serial.println(ptr_result->c);
-      }
-  } 
-  vTaskDelete( NULL );
-}
+//void Task1code( void * pvParameters ){
+//  ADC_data *ptr_sample = ((ADC_data*)pvParameters);
+//  
+//  Serial.print("Task1 running on core ");
+//  Serial.println(xPortGetCoreID());
+//
+//  
+//  for(;;){
+//    if (ptr_sample->new_read) {   
+//      Serial.println(ptr_sample->a);
+//      ptr_sample->new_read = false;
+//    }
+//    delay(1);
+//  }
+//  vTaskDelete( NULL );
+//}
 
 void loop() {
-  if (continuousConversionReady) {    
-    
-    continuousConversionReady = false;
-    
-    ADC_read = ((int) ads.getLastConversionResults());
-    //value_array[array_index] = ((int) ads.getLastConversionResults());
-    //result = value_array[array_index];
-    //array_index = (array_index < data_length) ? array_index+1 : 0;
+  unsigned long currentMicros = micros(); 
+  if (currentMicros - previousMicros > period) { // interval passed?
+    previousMicros = currentMicros; // save the last time
 
-    // Demux ADC read and switch next read to the subsequent channel 
-    switch (channel) {
-    case (0):
-      result.c = ADC_read;
-      channel = 1;
-      break;
-    case (1):
-      result.a = ADC_read;
-      channel = 2;
-      break;
-    case (2):
-      result.b = ADC_read;
-      channel = 0;
-      break;
-    }
-    ads.changeChannelContinuous_SingleEnded(channel);
-    
-    //Serial.println (result);
-    //Serial.println(time_diff);
+    // Bufferiza as amostras presentes para uso do filtro hp //
+    sample.a_prev = sample.a_atual;
+    sample.b_prev = sample.b_atual;
+    sample.c_prev = sample.c_atual;
+    sample.a_filt_prev = sample.a_filt_atual;
 
-    // checking effective sampling rate
-    if( i < 1000) {
-      i++;
-      time_diff_acc += time_diff;
-    } 
-    else {
-      i = 0;
-      Serial.println(time_diff_acc);
-      time_diff_acc = 0;
-    }
+    // Lê as novas amostras //  
+    sample.a_atual = (double) ads.readADC_SingleEnded(0);
+    sample.b_atual = (double) ads.readADC_SingleEnded(1);
+    sample.c_atual = (double) ads.readADC_SingleEnded(2);
 
+    // Realiza a filtragem para remover o nível DC do sinal // 
+//    sample.a_filt_atual = hp_coeff*(sample.a_filt_prev + sample.a_atual - sample.a_prev);
+    sample.b_filt_atual = hp_coeff*(sample.b_filt_prev + sample.b_atual - sample.b_prev);
+//    sample.c_filt_atual = hp_coeff*(sample.c_filt_prev + sample.c_atual - sample.c_prev);
+
+    // Envia a amostra filtrada pela serial //
+    Serial.println(sample.b_filt_atual);
   }
+    
 }
